@@ -1,0 +1,230 @@
+Java NIO 的前生今世 之三 NIO Buffer 详解
+
+Java NIO Buffer
+当我们需要与 NIO Channel 进行交互时, 我们就需要使用到 NIO Buffer, 即数据从 Buffer读取到 Channel 中, 并且从 Channel 中写入到 Buffer 中.
+实际上, 一个 Buffer 其实就是一块内存区域, 我们可以在这个内存区域中进行数据的读写. NIO Buffer 其实是这样的内存块的一个封装, 并提供了一些操作方法让我们能够方便地进行数据的读写.
+Buffer 类型有:
+
+ByteBuffer
+CharBuffer
+DoubleBuffer
+FloatBuffer
+IntBuffer
+LongBuffer
+ShortBuffer这些 Buffer 覆盖了能从 IO 中传输的所有的 Java 基本数据类型.
+NIO Buffer 的基本使用
+使用 NIO Buffer 的步骤如下:
+
+将数据写入到 Buffer 中.
+调用 Buffer.flip()方法, 将 NIO Buffer 转换为读模式.
+从 Buffer 中读取数据
+调用 Buffer.clear() 或 Buffer.compact()方法, 将 Buffer 转换为写模式.
+当我们将数据写入到 Buffer 中时, Buffer 会记录我们已经写了多少的数据, 当我们需要从 Buffer 中读取数据时, 必须调用 Buffer.flip()将 Buffer 切换为读模式.
+一旦读取了所有的 Buffer 数据, 那么我们必须清理 Buffer, 让其从新可写, 清理 Buffer 可以调用 Buffer.clear() 或 Buffer.compact().
+例如:
+
+public class Test {
+    public static void main(String[] args) {
+        IntBuffer intBuffer = IntBuffer.allocate(2);
+        intBuffer.put(12345678);
+        intBuffer.put(2);
+        intBuffer.flip();
+        System.err.println(intBuffer.get());
+        System.err.println(intBuffer.get());
+    }
+}
+上述中, 我们分配两个单位大小的 IntBuffer, 因此它可以写入两个 int 值.
+我们使用 put 方法将 int 值写入, 然后使用 flip 方法将 buffer 转换为读模式, 然后连续使用 get 方法从 buffer 中获取这两个 int 值.
+每当调用一次 get 方法读取数据时, buffer 的读指针都会向前移动一个单位长度(在这里是一个 int 长度)
+
+Buffer 属性
+一个 Buffer 有三个属性:
+
+capacity
+position
+limit
+其中 position 和 limit 的含义与 Buffer 处于读模式或写模式有关, 而 capacity 的含义与 Buffer 所处的模式无关.
+Capacity
+
+一个内存块会有一个固定的大小, 即容量(capacity), 我们最多写入capacity 个单位的数据到 Buffer 中, 例如一个 DoubleBuffer, 其 Capacity 是100, 那么我们最多可以写入100个 double 数据.
+
+Position
+
+当从一个 Buffer 中写入数据时, 我们是从 Buffer 的一个确定的位置(position)开始写入的. 在最初的状态时, position 的值是0. 每当我们写入了一个单位的数据后, position 就会递增一.
+当我们从 Buffer 中读取数据时, 我们也是从某个特定的位置开始读取的. 当我们调用了 filp()方法将 Buffer 从写模式转换到读模式时, position 的值会自动被设置为0, 每当我们读取一个单位的数据, position 的值递增1.
+position 表示了读写操作的位置指针.
+
+limit
+
+limit - position 表示此时还可以写入/读取多少单位的数据.
+例如在写模式, 如果此时 limit 是10, position 是2, 则表示已经写入了2个单位的数据, 还可以写入 10 - 2 = 8 个单位的数据.
+
+例子:
+
+public class Test {
+    public static void main(String args[]) {
+        IntBuffer intBuffer = IntBuffer.allocate(10);
+        intBuffer.put(10);
+        intBuffer.put(101);
+        System.err.println("Write mode: ");
+        System.err.println("\tCapacity: " + intBuffer.capacity());
+        System.err.println("\tPosition: " + intBuffer.position());
+        System.err.println("\tLimit: " + intBuffer.limit());
+
+        intBuffer.flip();
+        System.err.println("Read mode: ");
+        System.err.println("\tCapacity: " + intBuffer.capacity());
+        System.err.println("\tPosition: " + intBuffer.position());
+        System.err.println("\tLimit: " + intBuffer.limit());
+    }
+}
+这里我们首先写入两个 int 值, 此时 capacity = 10, position = 2, limit = 10.然后我们调用 flip 转换为读模式, 此时 capacity = 10, position = 0, limit = 2;
+
+分配 Buffer
+为了获取一个 Buffer 对象, 我们首先需要分配内存空间. 每个类型的 Buffer 都有一个 allocate()方法, 我们可以通过这个方法分配 Buffer:
+
+ByteBuffer buf = ByteBuffer.allocate(48);
+这里我们分配了48 * sizeof(Byte)字节的内存空间.
+
+CharBuffer buf = CharBuffer.allocate(1024);
+这里我们分配了大小为1024个字符的 Buffer, 即 这个 Buffer 可以存储1024 个 Char, 其大小为 1024 * 2 个字节.
+
+关于 Direct Buffer 和 Non-Direct Buffer 的区别
+Direct Buffer:
+
+所分配的内存不在 JVM 堆上, 不受 GC 的管理.(但是 Direct Buffer 的 Java 对象是由 GC 管理的, 因此当发生 GC, 对象被回收时, Direct Buffer 也会被释放)
+因为 Direct Buffer 不在 JVM 堆上分配, 因此 Direct Buffer 对应用程序的内存占用的影响就不那么明显(实际上还是占用了这么多内存, 但是 JVM 不好统计到非 JVM 管理的内存.)
+申请和释放 Direct Buffer 的开销比较大. 因此正确的使用 Direct Buffer 的方式是在初始化时申请一个 Buffer, 然后不断复用此 buffer, 在程序结束后才释放此 buffer.
+使用 Direct Buffer 时, 当进行一些底层的系统 IO 操作时, 效率会比较高, 因为此时 JVM 不需要拷贝 buffer 中的内存到中间临时缓冲区中.
+Non-Direct Buffer:
+
+直接在 JVM 堆上进行内存的分配, 本质上是 byte[] 数组的封装.
+因为 Non-Direct Buffer 在 JVM 堆中, 因此当进行操作系统底层 IO 操作中时, 会将此 buffer 的内存复制到中间临时缓冲区中. 因此 Non-Direct Buffer 的效率就较低.
+写入数据到 Buffer
+int bytesRead = inChannel.read(buf); //read into buffer.
+buf.put(127);
+从 Buffer 中读取数据
+//read from buffer into channel.
+int bytesWritten = inChannel.write(buf);
+byte aByte = buf.get();
+重置 position
+Buffer.rewind()方法可以重置 position 的值为0, 因此我们可以重新读取/写入 Buffer 了.
+如果是读模式, 则重置的是读模式的 position, 如果是写模式, 则重置的是写模式的 position.
+例如:
+
+public class Test {
+    public static void main(String[] args) {
+        IntBuffer intBuffer = IntBuffer.allocate(2);
+        intBuffer.put(1);
+        intBuffer.put(2);
+        System.err.println("position: " + intBuffer.position());
+
+        intBuffer.rewind();
+        System.err.println("position: " + intBuffer.position());
+        intBuffer.put(1);
+        intBuffer.put(2);
+        System.err.println("position: " + intBuffer.position());
+
+        
+        intBuffer.flip();
+        System.err.println("position: " + intBuffer.position());
+        intBuffer.get();
+        intBuffer.get();
+        System.err.println("position: " + intBuffer.position());
+
+        intBuffer.rewind();
+        System.err.println("position: " + intBuffer.position());
+    }
+}
+rewind() 主要针对于读模式. 在读模式时, 读取到 limit 后, 可以调用 rewind() 方法, 将读 position 置为0.
+
+关于 mark()和 reset()
+我们可以通过调用 Buffer.mark()将当前的 position 的值保存起来, 随后可以通过调用 Buffer.reset()方法将 position 的值回复回来.例如:
+
+public class Test {
+    public static void main(String[] args) {
+        IntBuffer intBuffer = IntBuffer.allocate(2);
+        intBuffer.put(1);
+        intBuffer.put(2);
+        intBuffer.flip();
+        System.err.println(intBuffer.get());
+        System.err.println("position: " + intBuffer.position());
+        intBuffer.mark();
+        System.err.println(intBuffer.get());
+
+        System.err.println("position: " + intBuffer.position());
+        intBuffer.reset();
+        System.err.println("position: " + intBuffer.position());
+        System.err.println(intBuffer.get());
+    }
+}
+这里我们写入两个 int 值, 然后首先读取了一个值. 此时读 position 的值为1.
+接着我们调用 mark() 方法将当前的 position 保存起来(在读模式, 因此保存的是读的 position), 然后再次读取, 此时 position 就是2了.
+接着使用 reset() 恢复原来的读 position, 因此读 position 就为1, 可以再次读取数据.
+
+flip, rewind 和 clear 的区别
+flip
+
+flip 方法源码
+
+public final Buffer flip() {
+    limit = position;
+    position = 0;
+    mark = -1;
+    return this;
+}
+Buffer 的读/写模式共用一个 position 和 limit 变量.
+当从写模式变为读模式时, 原先的 写 position 就变成了读模式的 limit.
+
+rewind
+
+rewind 方法源码
+
+public final Buffer rewind() {
+    position = 0;
+    mark = -1;
+    return this;
+}
+rewind, 即倒带, 这个方法仅仅是将 position 置为0.
+
+clear
+
+clear 方法源码:
+
+public final Buffer clear() {
+    position = 0;
+    limit = capacity;
+    mark = -1;
+    return this;
+}
+根据源码我们可以知道, clear 将 positin 设置为0, 将 limit 设置为 capacity.clear 方法使用场景:
+
+在一个已经写满数据的 buffer 中, 调用 clear, 可以从头读取 buffer 的数据.
+为了将一个 buffer 填充满数据, 可以调用 clear, 然后一直写入, 直到达到 limit.
+例子:
+
+IntBuffer intBuffer = IntBuffer.allocate(2);
+intBuffer.flip();
+System.err.println("position: " + intBuffer.position());
+System.err.println("limit: " + intBuffer.limit());
+System.err.println("capacity: " + intBuffer.capacity());
+
+// 这里不能读, 因为 limit == position == 0, 没有数据.
+//System.err.println(intBuffer.get());
+
+intBuffer.clear();
+System.err.println("position: " + intBuffer.position());
+System.err.println("limit: " + intBuffer.limit());
+System.err.println("capacity: " + intBuffer.capacity());
+
+// 这里可以读取数据了, 因为 clear 后, limit == capacity == 2, position == 0,
+// 即使我们没有写入任何的数据到 buffer 中.
+System.err.println(intBuffer.get()); // 读取到0
+System.err.println(intBuffer.get()); // 读取到0
+Buffer 的比较
+我们可以通过 equals() 或 compareTo() 方法比较两个 Buffer, 当且仅当如下条件满足时, 两个 Buffer 是相等的:
+
+两个 Buffer 是相同类型的
+两个 Buffer 的剩余的数据个数是相同的
+两个 Buffer 的剩余的数据都是相同的.
+通过上述条件我们可以发现, 比较两个 Buffer 时, 并不是 Buffer 中的每个元素都进行比较, 而是比较 Buffer 中剩余的元素.
